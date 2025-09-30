@@ -42,6 +42,9 @@ app.post("/purchase", (req, res) => {
         // Send Discord webhook embed
         var discordWebhookUrl = "https://discord.com/api/webhooks/1422679259297742930/vsEJOKaGkFWlExkCYNHajU4URADmc9hI5Ue6nTjoWyYKX6rMLIOad4aHlrEgbHQXR59x";
         
+        console.log("🎯 Preparing Discord webhook...");
+        console.log("Webhook URL:", discordWebhookUrl);
+        
         const embed = {
             title: "💰 New Purchase",
             color: 0x00ff00, // Green color
@@ -68,17 +71,41 @@ app.post("/purchase", (req, res) => {
             timestamp: new Date().toISOString()
         };
 
+        const webhookPayload = {
+            embeds: [embed]
+        };
+
+        console.log("📦 Webhook payload:", JSON.stringify(webhookPayload, null, 2));
+
         // Send webhook
+        console.log("🚀 Sending Discord webhook...");
         fetch(discordWebhookUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                embeds: [embed]
-            })
-        }).catch(webhookError => {
-            console.error("Discord webhook error:", webhookError);
+            body: JSON.stringify(webhookPayload)
+        })
+        .then(response => {
+            console.log("✅ Discord webhook response status:", response.status);
+            console.log("📊 Response headers:", Object.fromEntries(response.headers));
+            return response.text();
+        })
+        .then(responseText => {
+            console.log("📝 Discord webhook response body:", responseText);
+            if (responseText) {
+                console.log("✨ Discord webhook sent successfully!");
+            } else {
+                console.log("⚠️ Discord webhook sent but no response body");
+            }
+        })
+        .catch(webhookError => {
+            console.error("❌ Discord webhook error:", webhookError);
+            console.error("🔍 Error details:", {
+                name: webhookError.name,
+                message: webhookError.message,
+                stack: webhookError.stack
+            });
         });
 
         res.json({ success: true, message: "Purchase recorded" });
