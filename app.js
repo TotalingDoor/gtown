@@ -1,6 +1,68 @@
 const express = require("express");
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const app = express();
 const port = process.env.PORT || 3001;
+const discordWebhookUrl = "https://discord.com/api/webhooks/1422679259297742930/vsEJOKaGkFWlExkCYNHajU4URADmc9hI5Ue6nTjoWyYKX6rMLIOad4aHlrEgbHQXR59x";
+
+// Working proxy list (updated with speed test results - fastest first)
+const WORKING_PROXIES = [
+    '47.251.43.115:33333',    // 1.716s - Fastest
+    '118.201.133.59:3128',    // 2.069s
+    '52.148.130.219:8080',    // 2.315s
+    '45.238.58.33:8080',      // 3.192s
+    '45.118.114.30:8080',     // 3.231s
+    '47.51.51.190:8080',      // 4.702s
+    '179.61.111.209:999',     // 4.726s
+    '199.188.204.171:8080',   // 7.270s
+    '202.5.32.33:2727',       // 7.274s
+    '143.198.147.156:8888'    // 7.348s
+];
+
+let currentProxyIndex = 0;
+
+// Function to send Discord webhook with proxy rotation
+async function sendDiscordWebhookWithProxies(webhookUrl, payload) {
+    const maxRetries = WORKING_PROXIES.length;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const proxyAddress = WORKING_PROXIES[currentProxyIndex];
+        currentProxyIndex = (currentProxyIndex + 1) % WORKING_PROXIES.length;
+        
+        try {
+            console.log(`Attempting Discord webhook via proxy: ${proxyAddress}`);
+            
+            const agent = new HttpsProxyAgent(`http://${proxyAddress}`);
+            
+            const response = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+                agent: agent,
+                timeout: 10000 // 10 second timeout
+            });
+            
+            if (response.status === 204) {
+                console.log(`✅ Discord webhook sent successfully via ${proxyAddress}`);
+                return { success: true, proxy: proxyAddress };
+            } else if (response.status === 429) {
+                console.log(`⏰ Rate limited via ${proxyAddress}, trying next proxy...`);
+                continue;
+            } else {
+                console.log(`❌ Webhook failed via ${proxyAddress}: HTTP ${response.status}`);
+                continue;
+            }
+            
+        } catch (error) {
+            console.log(`💥 Error via ${proxyAddress}: ${error.message}`);
+            continue;
+        }
+    }
+    
+    console.error('❌ All proxies failed or rate limited');
+    return { success: false, error: 'All proxies failed' };
+}
 
 // Middleware to parse JSON requests
 app.use(express.json());
@@ -38,13 +100,7 @@ app.post("/purchase", (req, res) => {
         }
 
         console.log(`Purchase from user ${id}: $${usd}`);
-        
-        // Send Discord webhook embed
-        var discordWebhookUrl = "https://discord.com/api/webhooks/1422679259297742930/vsEJOKaGkFWlExkCYNHajU4URADmc9hI5Ue6nTjoWyYKX6rMLIOad4aHlrEgbHQXR59x";
-        
-        console.log("🎯 Preparing Discord webhook...");
-        console.log("Webhook URL:", discordWebhookUrl);
-        
+                
         const embed = {
             title: "💰 New Purchase",
             color: 0x00ff00, // Green color
@@ -71,41 +127,11 @@ app.post("/purchase", (req, res) => {
             timestamp: new Date().toISOString()
         };
 
-        const webhookPayload = {
+        // Send webhook with proxy rotation
+        sendDiscordWebhookWithProxies(discordWebhookUrl, {
             embeds: [embed]
-        };
-
-        console.log("📦 Webhook payload:", JSON.stringify(webhookPayload, null, 2));
-
-        // Send webhook
-        console.log("🚀 Sending Discord webhook...");
-        fetch(discordWebhookUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(webhookPayload)
-        })
-        .then(response => {
-            console.log("✅ Discord webhook response status:", response.status);
-            console.log("📊 Response headers:", Object.fromEntries(response.headers));
-            return response.text();
-        })
-        .then(responseText => {
-            console.log("📝 Discord webhook response body:", responseText);
-            if (responseText) {
-                console.log("✨ Discord webhook sent successfully!");
-            } else {
-                console.log("⚠️ Discord webhook sent but no response body");
-            }
-        })
-        .catch(webhookError => {
-            console.error("❌ Discord webhook error:", webhookError);
-            console.error("🔍 Error details:", {
-                name: webhookError.name,
-                message: webhookError.message,
-                stack: webhookError.stack
-            });
+        }).catch(webhookError => {
+            console.error("Discord webhook error:", webhookError);
         });
 
         res.json({ success: true, message: "Purchase recorded" });

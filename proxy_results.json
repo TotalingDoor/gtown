@@ -1,0 +1,62 @@
+[
+  {
+    "proxy": "47.251.43.115:33333",
+    "status": "SUCCESS",
+    "response_time": 1.7161555290222168,
+    "status_code": 204
+  },
+  {
+    "proxy": "118.201.133.59:3128",
+    "status": "SUCCESS",
+    "response_time": 2.069394111633301,
+    "status_code": 204
+  },
+  {
+    "proxy": "52.148.130.219:8080",
+    "status": "SUCCESS",
+    "response_time": 2.3146748542785645,
+    "status_code": 204
+  },
+  {
+    "proxy": "45.238.58.33:8080",
+    "status": "SUCCESS",
+    "response_time": 3.1924703121185303,
+    "status_code": 204
+  },
+  {
+    "proxy": "45.118.114.30:8080",
+    "status": "SUCCESS",
+    "response_time": 3.230591058731079,
+    "status_code": 204
+  },
+  {
+    "proxy": "47.51.51.190:8080",
+    "status": "SUCCESS",
+    "response_time": 4.702325820922852,
+    "status_code": 204
+  },
+  {
+    "proxy": "179.61.111.209:999",
+    "status": "SUCCESS",
+    "response_time": 4.7262420654296875,
+    "status_code": 204
+  },
+  {
+    "proxy": "199.188.204.171:8080",
+    "status": "SUCCESS",
+    "response_time": 7.270259857177734,
+    "status_code": 204
+  },
+  {
+    "proxy": "202.5.32.33:2727",
+    "status": "SUCCESS",
+    "response_time": 7.274218559265137,
+    "status_code": 204
+  },
+  {
+    "proxy": "143.198.147.156:8888",
+    "status": "SUCCESS",
+    "response_time": 7.348454713821411,
+    "status_code": 204
+  }
+]
