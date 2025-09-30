@@ -6,15 +6,16 @@ const port = process.env.PORT || 3001;
 
 // Google Sheets configuration
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID || '1YMS62CBQoZWJOw7-dkXjIRtynM6lInPOylqB1h5H4iY';
-const RANGE = 'Sheet1!A1'; // Cell to store the running total
+const TOTAL_RANGE = 'Sheet1!A2'; // Cell to store the running total
+const COUNT_RANGE = 'Sheet1!B2'; // Cell to store purchase count
 const SERVICE_ACCOUNT_EMAIL = 'gtown-536@glowing-run-372920.iam.gserviceaccount.com';
 
 /**
- * Updates the running total in Google Sheets
+ * Updates the running total and purchase count in Google Sheets
  * @param {number} purchaseAmount The amount to add to the total
- * @return {Promise<number>} The new total amount
+ * @return {Promise<object>} The new total amount and purchase count
  */
-async function updateSpreadsheetsTotal(purchaseAmount) {
+async function updateSpreadsheetsData(purchaseAmount) {
     try {
         // Authenticate with Google using service account credentials
         const auth = new GoogleAuth({
@@ -37,37 +38,52 @@ async function updateSpreadsheetsTotal(purchaseAmount) {
         // Create Sheets API client
         const sheets = google.sheets({ version: 'v4', auth });
 
-        // Read current total from spreadsheet
+        // Read current total and count from spreadsheet
         let currentTotal = 0;
+        let currentCount = 0;
+        
         try {
-            const readResponse = await sheets.spreadsheets.values.get({
+            const batchResponse = await sheets.spreadsheets.values.batchGet({
                 spreadsheetId: SPREADSHEET_ID,
-                range: RANGE,
+                ranges: [TOTAL_RANGE, COUNT_RANGE],
             });
             
-            const currentValue = readResponse.data.values?.[0]?.[0];
-            currentTotal = currentValue ? parseFloat(currentValue) || 0 : 0;
-            console.log(`📊 Current total in spreadsheet: $${currentTotal}`);
+            const totalValue = batchResponse.data.valueRanges[0].values?.[0]?.[0];
+            const countValue = batchResponse.data.valueRanges[1].values?.[0]?.[0];
+            
+            currentTotal = totalValue ? parseFloat(totalValue) || 0 : 0;
+            currentCount = countValue ? parseInt(countValue) || 0 : 0;
+            
+            console.log(`📊 Current total: $${currentTotal}, Current count: ${currentCount} purchases`);
         } catch (readError) {
-            console.log(`📝 No existing total found, starting from $0`);
+            console.log(`📝 No existing data found, starting from $0 and 0 purchases`);
         }
 
-        // Calculate new total
+        // Calculate new values
         const newTotal = currentTotal + purchaseAmount;
-        console.log(`💰 Adding $${purchaseAmount}, new total: $${newTotal}`);
+        const newCount = currentCount + 1;
+        console.log(`💰 Adding $${purchaseAmount}, new total: $${newTotal}, new count: ${newCount} purchases`);
 
-        // Write new total back to spreadsheet
-        await sheets.spreadsheets.values.update({
+        // Write new values back to spreadsheet
+        await sheets.spreadsheets.values.batchUpdate({
             spreadsheetId: SPREADSHEET_ID,
-            range: RANGE,
-            valueInputOption: 'RAW',
             requestBody: {
-                values: [[newTotal]]
+                valueInputOption: 'RAW',
+                data: [
+                    {
+                        range: TOTAL_RANGE,
+                        values: [[newTotal]]
+                    },
+                    {
+                        range: COUNT_RANGE,
+                        values: [[newCount]]
+                    }
+                ]
             }
         });
 
-        console.log(`✅ Successfully updated spreadsheet total to $${newTotal}`);
-        return newTotal;
+        console.log(`✅ Successfully updated spreadsheet - Total: $${newTotal}, Count: ${newCount} purchases`);
+        return { total: newTotal, count: newCount };
 
     } catch (error) {
         console.error('❌ Google Sheets error:', error.message);
@@ -112,10 +128,10 @@ app.post("/purchase", async (req, res) => {
 
         console.log(`Purchase from user ${id}: $${usd}`);
         
-        // Update Google Sheets running total
+        // Update Google Sheets running total and purchase count
         try {
-            const newTotal = await updateSpreadsheetsTotal(parseFloat(usd));
-            console.log(`📈 Running total updated to: $${newTotal}`);
+            const result = await updateSpreadsheetsData(parseFloat(usd));
+            console.log(`📈 Updated - Total: $${result.total}, Purchases: ${result.count}`);
         } catch (sheetsError) {
             console.error("Google Sheets update failed:", sheetsError.message);
             // Continue processing even if sheets update fails
