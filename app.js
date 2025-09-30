@@ -1,67 +1,78 @@
 const express = require("express");
-const { HttpsProxyAgent } = require('https-proxy-agent');
+const { GoogleAuth } = require('google-auth-library');
+const { google } = require('googleapis');
 const app = express();
 const port = process.env.PORT || 3001;
-const discordWebhookUrl = "https://discord.com/api/webhooks/1422679259297742930/vsEJOKaGkFWlExkCYNHajU4URADmc9hI5Ue6nTjoWyYKX6rMLIOad4aHlrEgbHQXR59x";
 
-// Working proxy list (updated with speed test results - fastest first)
-const WORKING_PROXIES = [
-    '47.251.43.115:33333',    // 1.716s - Fastest
-    '118.201.133.59:3128',    // 2.069s
-    '52.148.130.219:8080',    // 2.315s
-    '45.238.58.33:8080',      // 3.192s
-    '45.118.114.30:8080',     // 3.231s
-    '47.51.51.190:8080',      // 4.702s
-    '179.61.111.209:999',     // 4.726s
-    '199.188.204.171:8080',   // 7.270s
-    '202.5.32.33:2727',       // 7.274s
-    '143.198.147.156:8888'    // 7.348s
-];
+// Google Sheets configuration
+const SPREADSHEET_ID = process.env.SPREADSHEET_ID || '1YMS62CBQoZWJOw7-dkXjIRtynM6lInPOylqB1h5H4iY';
+const RANGE = 'Sheet1!A1'; // Cell to store the running total
+const SERVICE_ACCOUNT_EMAIL = 'gtown-536@glowing-run-372920.iam.gserviceaccount.com';
 
-let currentProxyIndex = 0;
+/**
+ * Updates the running total in Google Sheets
+ * @param {number} purchaseAmount The amount to add to the total
+ * @return {Promise<number>} The new total amount
+ */
+async function updateSpreadsheetsTotal(purchaseAmount) {
+    try {
+        // Authenticate with Google using service account credentials
+        const auth = new GoogleAuth({
+            scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+            credentials: {
+                type: "service_account",
+                project_id: "glowing-run-372920",
+                private_key_id: "1e916ffc8c95d6d05f6b2eceb23bf00bb9b40152",
+                private_key: "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDdbbrSgmWBruKw\n1HHk5eKu3j0MXME9kX96bNrrd0GsFNlJo4Cj5aQogCcZkMEedUzAZYZwIaCJC/XR\nq7h2h3ZH2UxNMzR1wUjrH4qjdAbpkEfdL7HKrcQg6T60OesBaStdIgmPHfSG471a\naLpT6nmuLaVUfTRjMainywXdfAKU94mO0L8c7KIyZKGqEQdMJ9SbJF8Kp1rN5q8s\n5cn9QLktRpzdQvO0AdrY2xoqNBoKgaqNXKCMEA/iQKYhwg5vGrxt33nMaOGDy/CM\nIrW1mrb1hycT33wJ1LMOiOVJOf95qlOOtRni6l0AuZrKE4IAlYqlJGRlIaBrtrKT\nHIYI8v57AgMBAAECggEAXGkKGgavhELPesr+yW+jfiVjxwAC6cYKNLavWqvHraB5\n2oCxFDWnn/tz1fiSkDqWEImOZMez7t4d9iY7csQv+eZXMLTZBPfoja/5NSQcKme7\nhjT8d0Cz5KRTNfYh/NG+djzZTnBK9+ydvtiMQq9NnwKPyEYEkg1MfNJ/HSM/FJm/\nEtquA71CBnE8jg6zxtnXYauiWf7jRzxfMstuQkbX1OSPjo7lmEB9/NRl1uX1V2JT\nJKc+kCR2USHGcm6q2doeZ/V6Am6xhmPlDUUh+BwWOay+8e49SUSIZ6WaUCt7A9mH\nICgQk0qOtYD5+bHOWXPcIt+M1wQXfcP51P5OfdcQgQKBgQD+nG9kkpHRY6KJy+qm\ns0DdsnN9AE8rZrT/jXEtDq4DcsP+XK7w7ekWH6g+t19NXGImxT6sHUlRLKgvIIBK\nkEObd4lHAZW80TEEB9+tIAhwOzJXVVCiMToPXVHBt5c96Q8u791h2f8ve+u1NaGA\nRa9gG2wGO34gVIPl5ZowpIZOOwKBgQDeovSOeV05LBnel6ZDCw7Vx6HJEAOnepdD\nj/fwnuRh7GAm8shBfhJ+wYGt4dvwVnskbv+qGldgsaUV+EoEj4HGN92k+S/JfrXi\npl4D/uWQ6BKrWNys+tWljZxRnKUTW2slbaoaCbtSNWhzZLGUAK8POoLXf3My8s2a\n5xITr2HMwQKBgQD6kRlO8K9wUY1z7qpOw7nic+wT6GoBXGJj3N60aO33lsorWSsR\nEBGDJER+9BdmGrS9UwAKggfVSw1405Ntzeu65DjFGFo0J+sE/Hqz9gJX8Onp6Jwi\nAjARTtVWv0aoNuQqXQSRd+ga4ulkvBLkGbAt9M6qk4Hcb1Aev4auuDs0YQKBgQCh\nIb9t/liCMHDosUkb7Lzn7HwjUPvUEt23gFMqS1VvqexNRBm7jMtGAjcg6f6Mi4rE\na7GOI1JqISgiJnkro9GA7J318IOtiY+KYm5Y5fqwTcZ1TPMqHsDR+RPR3VV8FQYP\nKLeb8L8qWI0oNxBu1a/djbN01EFD9oboPaTPqndWAQKBgElwH9b7pij3J3FKwXtA\nP+bL26ZNybAhTEO8R9NuB3puRzg2EVuwYL/HTJEDX54vkKQ31emRUJpFrTQn8Ovo\nID9Lw9DWTpgpOND54O5O2yGOHQX70VBjToN66x5uatZmjJN7Utv1UqbTxAecnOQE\nxt/chfiyuMW1Se0ZAnRrk1l+\n-----END PRIVATE KEY-----\n",
+                client_email: "gtown-536@glowing-run-372920.iam.gserviceaccount.com",
+                client_id: "117456173766832239538",
+                auth_uri: "https://accounts.google.com/o/oauth2/auth",
+                token_uri: "https://oauth2.googleapis.com/token",
+                auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+                client_x509_cert_url: "https://www.googleapis.com/robot/v1/metadata/x509/gtown-536%40glowing-run-372920.iam.gserviceaccount.com",
+                universe_domain: "googleapis.com"
+            },
+        });
 
-// Function to send Discord webhook with proxy rotation
-async function sendDiscordWebhookWithProxies(webhookUrl, payload) {
-    const maxRetries = WORKING_PROXIES.length;
-    
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-        const proxyAddress = WORKING_PROXIES[currentProxyIndex];
-        currentProxyIndex = (currentProxyIndex + 1) % WORKING_PROXIES.length;
-        
+        // Create Sheets API client
+        const sheets = google.sheets({ version: 'v4', auth });
+
+        // Read current total from spreadsheet
+        let currentTotal = 0;
         try {
-            console.log(`Attempting Discord webhook via proxy: ${proxyAddress}`);
-            
-            const agent = new HttpsProxyAgent(`http://${proxyAddress}`);
-            
-            const response = await fetch(webhookUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
-                agent: agent,
-                timeout: 10000 // 10 second timeout
+            const readResponse = await sheets.spreadsheets.values.get({
+                spreadsheetId: SPREADSHEET_ID,
+                range: RANGE,
             });
             
-            if (response.status === 204) {
-                console.log(`✅ Discord webhook sent successfully via ${proxyAddress}`);
-                return { success: true, proxy: proxyAddress };
-            } else if (response.status === 429) {
-                console.log(`⏰ Rate limited via ${proxyAddress}, trying next proxy...`);
-                continue;
-            } else {
-                console.log(`❌ Webhook failed via ${proxyAddress}: HTTP ${response.status}`);
-                continue;
-            }
-            
-        } catch (error) {
-            console.log(`💥 Error via ${proxyAddress}: ${error.message}`);
-            continue;
+            const currentValue = readResponse.data.values?.[0]?.[0];
+            currentTotal = currentValue ? parseFloat(currentValue) || 0 : 0;
+            console.log(`📊 Current total in spreadsheet: $${currentTotal}`);
+        } catch (readError) {
+            console.log(`📝 No existing total found, starting from $0`);
         }
+
+        // Calculate new total
+        const newTotal = currentTotal + purchaseAmount;
+        console.log(`💰 Adding $${purchaseAmount}, new total: $${newTotal}`);
+
+        // Write new total back to spreadsheet
+        await sheets.spreadsheets.values.update({
+            spreadsheetId: SPREADSHEET_ID,
+            range: RANGE,
+            valueInputOption: 'RAW',
+            requestBody: {
+                values: [[newTotal]]
+            }
+        });
+
+        console.log(`✅ Successfully updated spreadsheet total to $${newTotal}`);
+        return newTotal;
+
+    } catch (error) {
+        console.error('❌ Google Sheets error:', error.message);
+        throw error;
     }
-    
-    console.error('❌ All proxies failed or rate limited');
-    return { success: false, error: 'All proxies failed' };
 }
 
 // Middleware to parse JSON requests
@@ -91,7 +102,7 @@ app.post("/login", (req, res) => {
 });
 
 // Purchase endpoint
-app.post("/purchase", (req, res) => {
+app.post("/purchase", async (req, res) => {
     try {
         const { id, usd } = req.body;
         
@@ -100,39 +111,15 @@ app.post("/purchase", (req, res) => {
         }
 
         console.log(`Purchase from user ${id}: $${usd}`);
-                
-        const embed = {
-            title: "💰 New Purchase",
-            color: 0x00ff00, // Green color
-            fields: [
-                {
-                    name: "User ID",
-                    value: id,
-                    inline: true
-                },
-                {
-                    name: "Amount",
-                    value: `$${usd} USD`,
-                    inline: true
-                },
-                {
-                    name: "Timestamp",
-                    value: new Date().toISOString(),
-                    inline: false
-                }
-            ],
-            footer: {
-                text: "Gorilla Town Purchase System"
-            },
-            timestamp: new Date().toISOString()
-        };
-
-        // Send webhook with proxy rotation
-        sendDiscordWebhookWithProxies(discordWebhookUrl, {
-            embeds: [embed]
-        }).catch(webhookError => {
-            console.error("Discord webhook error:", webhookError);
-        });
+        
+        // Update Google Sheets running total
+        try {
+            const newTotal = await updateSpreadsheetsTotal(parseFloat(usd));
+            console.log(`📈 Running total updated to: $${newTotal}`);
+        } catch (sheetsError) {
+            console.error("Google Sheets update failed:", sheetsError.message);
+            // Continue processing even if sheets update fails
+        }
 
         res.json({ success: true, message: "Purchase recorded" });
     } catch (error) {
