@@ -281,7 +281,7 @@ async function updateHourlyLoginCount() {
     }
 }
 
-// Middleware to parse JSON requests
+// Middleware to parse JSON 
 app.use(express.json());
 
 // Login endpoint
