@@ -9,6 +9,7 @@ const SPREADSHEET_ID = process.env.SPREADSHEET_ID || '1YMS62CBQoZWJOw7-dkXjIRtyn
 const TOTAL_RANGE = 'Sheet1!A2'; // Cell to store the running total
 const COUNT_RANGE = 'Sheet1!B2'; // Cell to store purchase count
 const INSTALL_COUNT_RANGE = 'Sheet1!C2'; // Cell to store new install count
+const TEAM_MEMBERS_RANGE = 'Sheet1!E2'; // Cell containing team member IDs
 // Day of week login tracking (Monday=B6, Tuesday=B7, ..., Sunday=B12)
 const DAY_RANGES = {
     'Monday': 'Sheet1!B6',
@@ -26,6 +27,54 @@ for (let hour = 0; hour < 24; hour++) {
     HOUR_RANGES[`${paddedHour}:00`] = `Sheet1!E${hour + 6}`;
 }
 const SERVICE_ACCOUNT_EMAIL = 'gtown-536@glowing-run-372920.iam.gserviceaccount.com';
+
+// Team member cache
+let teamMemberCache = {
+    data: null,
+    lastFetched: 0,
+    cacheDurationMs: 5 * 60 * 1000 // 5 minutes cache
+};
+
+/**
+ * Get team members with caching
+ * @return {Promise<string>} Team members data from cache or fresh from sheets
+ */
+async function getTeamMembers() {
+    const now = Date.now();
+    
+    // Check if cache is valid
+    if (teamMemberCache.data && (now - teamMemberCache.lastFetched) < teamMemberCache.cacheDurationMs) {
+        console.log(`🎯 Using cached team members data`);
+        return teamMemberCache.data;
+    }
+    
+    try {
+        console.log(`📡 Fetching fresh team members data from Google Sheets`);
+        const sheets = await createSheetsClient();
+        const response = await sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID,
+            range: TEAM_MEMBERS_RANGE,
+        });
+        
+        const teamMembersData = response.data.values?.[0]?.[0] || '';
+        
+        // Update cache
+        teamMemberCache.data = teamMembersData;
+        teamMemberCache.lastFetched = now;
+        
+        console.log(`✅ Team members cache updated`);
+        return teamMembersData;
+        
+    } catch (error) {
+        console.error('❌ Failed to fetch team members:', error.message);
+        // Return cached data if available, even if stale
+        if (teamMemberCache.data) {
+            console.log(`⚠️ Using stale cached data due to fetch error`);
+            return teamMemberCache.data;
+        }
+        throw error;
+    }
+}
 
 /**
  * Creates authenticated Google Sheets client (reusable)
@@ -307,11 +356,23 @@ app.post("/login", async (req, res) => {
             // Continue processing even if tracking fails
         }
 
-        // Default response: logged in successfully
-        // You can add custom logic here to check for banned users or team members
+        // Check if user is a team member using cached data
+        let loginResponse = "0"; // Default: normal login
+        try {
+            const teamMembersData = await getTeamMembers();
+            if (teamMembersData && teamMembersData.toString().includes(id)) {
+                loginResponse = "2"; // Team member
+                console.log(`👑 Team member login detected: ${id}`);
+            } else {
+                console.log(`👤 Normal user login: ${id}`);
+            }
+        } catch (teamCheckError) {
+            console.error("Team member check failed:", teamCheckError.message);
+            // Continue with normal login if team check fails
+        }
+
         // Return "1" to quit/ban user, "2" for team member, "0" for normal login
-        
-        res.send("0");
+        res.send(loginResponse);
 
     } catch (error) {
         console.error("Login error:", error);
